@@ -1,0 +1,162 @@
+#!/usr/bin/python
+
+import bottle
+import ConfigParser
+import getopt
+import socket
+import sys
+import syslog
+
+from bottle import get, post, request, abort, run
+from bottle import PasteServer
+from os     import path
+from supay  import Daemon
+
+from motoko.certificate import server
+from motoko.certificate import client
+
+
+syslog.openlog('motoko', syslog.LOG_PID, syslog.LOG_SYSLOG);
+
+try:
+    config = ConfigParser.ConfigParser()
+    config.read('/etc/motoko/motoko.conf')
+
+    datadir = config.get('global', 'datadir')
+    ca      = config.get('certificate', 'ca')
+    capriv  = config.get('certificate', 'capriv')
+except IOError:
+    syslog.syslog(syslog.LOG_ERR, '[critical] Configuration file not found. Exiting.')
+    sys.exit(1)
+
+# CA certificate and keyfile must be present to generate server certificates
+# More information on generating CA certificate can be found on:
+# http://wiki.libvirt.org/page/TLSCreateServerCerts
+
+if not path.isfile(ca):
+    syslog.syslog(syslog.LOG_ERR, '[error] CA certificate not found.')
+
+if not path.isfile(capriv):
+    syslog.syslog(syslog.LOG_ERR, '[error] CA certificate key not found.')
+
+
+csmanager = server(ca, capriv, datadir)
+ccmanager = client(ca, capriv, datadir)
+
+def gethostname():
+    raddr = request.environ.get('REMOTE_ADDR')
+    try:
+        hostname = socket.gethostbyaddr(raddr)[0].split('.')[0]
+    except socket.herror:
+        syslog.syslog(syslog.LOG_ERR,
+            '[error]  Hostname does not match reverse IP, check reverse DNS entry (%s)' % raddr)
+        abort(401, "Host does not match checksum")
+
+    return hostname
+
+@get('/certificate/server')
+def get_certificate():
+    """ Get server libvirt certificate
+    """
+
+    hostname = gethostname()
+
+    try:
+        cert = csmanager.get(hostname)
+    except EnvironmentError:
+        abort(500, "Check logs on motoko server.")
+
+    syslog.syslog(syslog.LOG_INFO, '[info] Server certificate delivered (%s)' % hostname)
+    return cert
+
+@get('/certificate/client')
+def get_client_certificate():
+    """ Get client libvirt certificate
+    """
+
+    hostname = gethostname()
+
+    try:
+        ccert = ccmanager.get(hostname)
+    except EnvironmentError:
+        abort(500, "Check logs on motoko server.")
+
+    syslog.syslog(syslog.LOG_INFO, '[info] Client certificate delivered (%s)' % hostname)
+    return ccert
+
+@get('/server')
+def get_server_list():
+    """ Get virtual server list
+    """
+
+@get('/server/:name')
+def get_server_info(name):
+    """ Get virtual server information
+    """
+
+@post('/server/:name')
+def create_server(name):
+    """ Create new virtual server on database
+    """
+
+@get('/hypervisor')
+def get_hypervisor_list():
+    """ Get all available hypervisors
+    """
+
+@get('/hypervisor/:name')
+def get_hypervisor_info(name):
+    """ Get hypervisor information
+    """
+
+@post('/hypervisor/:name')
+def create_hypervisor(name):
+    """ Create hypervisor on database
+    """
+
+@get('/pool')
+def get_pool_list():
+    """ Get available pools
+    """
+
+@get('/pool/:name')
+def get_pool_info(name):
+    """ Get pool information
+    """
+
+@post('/pool/:name')
+def create_pool(name):
+    """ Create new hypervisor pool
+    """
+
+
+def main():
+    bottle.debug(False)
+    sys.stdout = sys.stderr = open('/var/log/motoko.out', "a")
+    run(host='0.0.0.0', port=6161, server=PasteServer)
+
+
+if __name__ == '__main__':
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "a:", ["action="])
+    except getopt.GetoptError, err:
+        print str(err)
+
+    action = 'start'
+    for o, a in opts:
+        if o in ('-a', '--action'):
+            action = a
+
+    daemon = Daemon(name='motoko', catch_all_log='/var/log/motoko.out')
+
+    if action == 'start':
+        syslog.syslog(syslog.LOG_INFO, '[info] Starting motoko...')
+        daemon.start()
+        main()
+        syslog.syslog(syslog.LOG_INFO, '[info] Motoko started!')
+    elif action == 'status':
+        daemon.status()
+    elif action == 'stop':
+        daemon.stop()
+    elif action == 'debug':
+        main()

@@ -1,0 +1,3 @@
+cpanel: {memory: 40, vcpus: 8, vlan: 371}
+pleskw:	{memory: 40, vcpus: 8, vlan: 360}
+pleskl:	{memory: 40, vcpus: 8, vlan: 357}

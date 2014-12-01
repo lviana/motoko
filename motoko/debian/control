@@ -1,0 +1,14 @@
+Source: motoko
+Section: python
+Priority: extra
+Maintainer: Luiz Viana <lviana@include.io>
+Build-Depends: debhelper (>= 7.0.50~), python
+Standards-Version: 3.9.4
+Homepage: https://github.com/lviana/motoko
+
+Package: motoko
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}, python, python-support (>= 0.90), python-supay, python-bottle, python-cheetah, gnutls-bin
+Description: Smart servers management tools
+ Management tools and services for smart server hosts and
+ resource management for smart servers guests.

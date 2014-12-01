@@ -1,0 +1,99 @@
+#!/usr/bin/env python
+
+import baker
+import ConfigParser
+import json
+import os
+import sys
+import syslog
+import urllib2
+
+
+syslog.openlog('mtktool', syslog.LOG_PID, syslog.LOG_SYSLOG)
+
+try:
+    config = ConfigParser.ConfigParser()
+    config.read('/etc/motoko/mtktool.conf')
+
+    serverl = config.get('motoko', 'servers')
+    port    = config.get('motoko', 'port')
+    certdir = config.get('certificate', 'certdir')
+    keydir  = config.get('certificate', 'keydir')
+    servers = serverl.split(',')
+except IOError:
+    print('\n\t[Error] Configuration file not found.\n')
+    syslog.syslog(syslog.LOG_ERR, '[Error] Configuration file not found.')
+    sys.exit(2)
+
+
+def prettyOutput(data):
+    try:
+        print json.dumps(data, sort_keys=True, indent=4)
+    except ValueError:
+        print data
+
+
+@baker.command(shortopts={"access": "a", "verbose": "v", "debug": "d"},
+               params={"access": "Access type: server (default) or client.",
+                       "verbose": "Print certificate and key to stdout.",
+                       "debug": "Show debug information."})
+def certificate(access, verbose=False, debug=False):
+        """Get smart server certificates.
+        
+        If the certificate does not exist in motoko and the host is allowed,
+        it will be generated during the request.
+        """
+
+        accessopts = ['client', 'server']
+        if access not in accessopts:
+            print('\n\t[Error] Available access options: %s\n' % accessopts)
+            sys.exit(3)
+
+        for server in servers:
+            if debug:
+                    print('[Debug] Calling motoko: GET http://%s:%s/certificate/%s' % (server, port, access))
+
+            try:
+                data = json.load(urllib2.urlopen('http://%s:%s/certificate/%s' % (server, port, access)))
+
+            except urllib2.URLError, e:
+                syslog.syslog(syslog.LOG_ERR, '[Error] Could not reach motoko server: %s' % server)
+                if debug:
+                    print('[Debug] Trace output:\n%s' % e)
+
+                if server == servers[-1]:
+                    print('\n\t[Error] Could not reach motoko server. Check network and try again.\n')
+                    sys.exit(1)
+
+        if verbose or debug:
+                prettyOutput(data)
+
+        
+        try:
+            if not os.path.isdir(certdir):
+                os.makedirs(certdir)
+            if not os.path.isdir(keydir):
+                os.makedirs(keydir)
+
+            cert = open('%s/%scert.pem' % (certdir, access), 'w+')
+            cert.write(str(data['certificate']))
+            cert.close()
+            syslog.syslog(syslog.LOG_INFO, '[Info] Certificate updated (%s mode).' % access)
+            if debug:
+                print('[Debug] Certificate written to %s/%scert.pem' % (certdir, access))
+
+            key  = open('%s/%skey.pem' % (keydir, access), 'w+')
+            key.write(str(data['key']))
+            key.close()
+            syslog.syslog(syslog.LOG_INFO, '[Info] Private key updated (%s mode).' % access)
+            if debug:
+                print('[Debug] Private key written to %s/%skey.pem' % (keydir, access))
+
+        except IOError, e:
+            syslog.syslog(syslog.LOG_ERR, '[Error] Could not write files, check destination directories.')
+            print('\n[Error] Could not write files, check destination directories.\n')
+            if debug:
+                print('[Debug]\n%s' % e)
+
+
+baker.run()

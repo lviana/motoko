@@ -1,0 +1,6 @@
+mtktool (1.0.0) stable; urgency=low
+
+  *  initial release
+  *  designed for motoko 1.0
+
+ -- Luiz Viana <lviana@include.io>  Wed, 12 Mar 2014 18:00:00 -0300
